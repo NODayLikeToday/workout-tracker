@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0F1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Workout Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- Main content area -->
+    <main id="app">
+      <div class="view">
+        <div class="empty-state">
+          <div class="empty-state__icon">⏳</div>
+          <div class="empty-state__text">Loading...</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom navigation -->
+    <nav class="bottom-nav">
+      <button class="nav-btn nav-btn--active" data-view="home">
+        <span class="nav-btn__icon">🏠</span>
+        <span class="nav-btn__label">Today</span>
+      </button>
+      <button class="nav-btn" data-view="log">
+        <span class="nav-btn__icon">✏️</span>
+        <span class="nav-btn__label">Log</span>
+      </button>
+      <button class="nav-btn" data-view="history">
+        <span class="nav-btn__icon">📋</span>
+        <span class="nav-btn__label">History</span>
+      </button>
+      <button class="nav-btn" data-view="progress">
+        <span class="nav-btn__icon">📈</span>
+        <span class="nav-btn__label">Progress</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast"></div>
+
+  <!-- Scripts -->
+  <script src="js/data.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
