@@ -2,15 +2,23 @@
 // APP STATE
 // ============================================
 const state = {
-  view: "home",        // home | log | history | progress
+  view: "home",
   sessions: [],
+  walks: [],
   currentSession: null,
   currentSets: [],
-  loading: false,
   toast: null,
   progressExercise: null,
   progressData: [],
+  progressTab: "lift",   // "lift" | "walk"
   historyDetail: null,
+  walkForm: {
+    walk_date: new Date().toISOString().split("T")[0],
+    miles: "",
+    duration_minutes: "",
+    notes: ""
+  },
+  editingWalk: null,
 };
 
 function setState(updates) {
@@ -31,8 +39,7 @@ function showToast(msg, type = "success") {
 // ============================================
 function render() {
   const app = document.getElementById("app");
-  
-  // Toast
+
   const toastEl = document.getElementById("toast");
   if (state.toast) {
     toastEl.textContent = state.toast.msg;
@@ -41,17 +48,16 @@ function render() {
     toastEl.className = "toast";
   }
 
-  // Nav active state
   document.querySelectorAll(".nav-btn").forEach(btn => {
     btn.classList.toggle("nav-btn--active", btn.dataset.view === state.view);
   });
 
-  // View
   switch (state.view) {
-    case "home":    app.innerHTML = renderHome(); break;
-    case "log":     app.innerHTML = renderLog(); break;
-    case "history": app.innerHTML = renderHistory(); break;
-    case "progress":app.innerHTML = renderProgress(); break;
+    case "home":     app.innerHTML = renderHome(); break;
+    case "log":      app.innerHTML = renderLog(); break;
+    case "walk":     app.innerHTML = renderWalk(); break;
+    case "history":  app.innerHTML = renderHistory(); break;
+    case "progress": app.innerHTML = renderProgress(); break;
   }
 
   bindEvents();
@@ -65,8 +71,10 @@ function renderHome() {
   const dayType = getDayType(today);
   const dayName = getDayName(today);
   const workout = WORKOUT_DATA[dayType];
-
-  const recentSessions = state.sessions.slice(0, 5);
+  const recentSessions = state.sessions.slice(0, 3);
+  const recentWalks = state.walks.slice(0, 3);
+  const todayStr = today.toISOString().split("T")[0];
+  const walkedToday = state.walks.some(w => w.walk_date === todayStr);
 
   return `
     <div class="view">
@@ -80,25 +88,34 @@ function renderHome() {
           </button>
         ` : `
           <div class="rest-badge">Rest Day — Recovery Active</div>
-          <button class="btn btn--ghost" data-action="start-workout" data-daytype="push">
-            Log anyway
-          </button>
+          <button class="btn btn--ghost" data-action="start-workout" data-daytype="push">Log anyway</button>
         `}
+      </div>
+
+      <div class="home-walk-strip ${walkedToday ? "home-walk-strip--done" : ""}">
+        ${walkedToday
+          ? `<span>🚶 Walked today ✓</span><button class="btn btn--ghost btn--sm" data-action="nav-walk">View</button>`
+          : `<span>No walk logged yet today</span><button class="btn btn--secondary btn--sm" data-action="nav-walk">Log Walk</button>`
+        }
       </div>
 
       ${recentSessions.length > 0 ? `
         <section class="section">
-          <h2 class="section-title">Recent Sessions</h2>
+          <h2 class="section-title">Recent Workouts</h2>
           <div class="session-list">
             ${recentSessions.map(s => renderSessionCard(s)).join("")}
           </div>
         </section>
-      ` : `
-        <div class="empty-state">
-          <div class="empty-state__icon">🏋️</div>
-          <div class="empty-state__text">No sessions yet. Start your first workout above.</div>
-        </div>
-      `}
+      ` : ""}
+
+      ${recentWalks.length > 0 ? `
+        <section class="section">
+          <h2 class="section-title">Recent Walks</h2>
+          <div class="session-list">
+            ${recentWalks.map(w => renderWalkCard(w)).join("")}
+          </div>
+        </section>
+      ` : ""}
     </div>
   `;
 }
@@ -108,9 +125,7 @@ function renderSessionCard(session) {
   const date = new Date(session.session_date + "T12:00:00");
   const dateStr = date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   const duration = session.duration_minutes
-    ? `${session.duration_minutes}m${session.duration_seconds ? ` ${session.duration_seconds}s` : ""}`
-    : "";
-
+    ? `${session.duration_minutes}m${session.duration_seconds ? ` ${session.duration_seconds}s` : ""}` : "";
   return `
     <div class="session-card" data-action="view-session" data-id="${session.id}" style="--day-color: ${workout.color}">
       <div class="session-card__accent"></div>
@@ -119,11 +134,92 @@ function renderSessionCard(session) {
           <span class="session-card__type">${workout.label}</span>
           <span class="session-card__date">${dateStr}</span>
         </div>
+        ${duration ? `<div class="session-card__meta"><span>⏱ ${duration}</span></div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderWalkCard(walk, showEdit = false) {
+  const date = new Date(walk.walk_date + "T12:00:00");
+  const dateStr = date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return `
+    <div class="session-card" style="--day-color: #16A34A">
+      <div class="session-card__accent"></div>
+      <div class="session-card__body">
+        <div class="session-card__top">
+          <span class="session-card__type">🚶 ${walk.miles} mi</span>
+          <span class="session-card__date">${dateStr}</span>
+        </div>
         <div class="session-card__meta">
-          ${duration ? `<span>⏱ ${duration}</span>` : ""}
-          ${session.walked_today ? `<span>🚶 ${session.miles_walked || "?"} mi</span>` : ""}
+          ${walk.duration_minutes ? `<span>⏱ ${walk.duration_minutes}m</span>` : ""}
+          ${walk.notes ? `<span class="walk-note-preview">${walk.notes}</span>` : ""}
         </div>
       </div>
+      ${showEdit ? `
+        <div class="walk-card-actions">
+          <button class="btn-icon" data-action="edit-walk" data-id="${walk.id}" title="Edit">✏️</button>
+          <button class="btn-icon btn-icon--danger" data-action="delete-walk" data-id="${walk.id}" title="Delete">×</button>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+// ============================================
+// WALK VIEW
+// ============================================
+function renderWalk() {
+  const f = state.walkForm;
+  const editing = state.editingWalk;
+
+  return `
+    <div class="view">
+      <h1 class="page-title">${editing ? "Edit Walk" : "Log a Walk"}</h1>
+
+      <div class="card">
+        <div class="form-row">
+          <label class="form-label">Date</label>
+          <input type="date" class="input" id="walk-date" value="${f.walk_date}"
+            data-action="walk-form-update" data-field="walk_date">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Miles walked</label>
+          <input type="number" class="input" id="walk-miles" placeholder="e.g. 2.0"
+            value="${f.miles}" step="0.1" min="0"
+            data-action="walk-form-update" data-field="miles">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Duration (minutes)</label>
+          <input type="number" class="input" id="walk-duration" placeholder="e.g. 30"
+            value="${f.duration_minutes}" min="0"
+            data-action="walk-form-update" data-field="duration_minutes">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Notes</label>
+          <textarea class="input textarea" id="walk-notes" placeholder="Evening walk, felt good..."
+            data-action="walk-form-update" data-field="notes">${f.notes}</textarea>
+        </div>
+        <div class="walk-form-actions">
+          <button class="btn btn--primary" data-action="save-walk">
+            ${editing ? "Save Changes" : "Log Walk"}
+          </button>
+          ${editing ? `<button class="btn btn--ghost" data-action="cancel-edit-walk">Cancel</button>` : ""}
+        </div>
+      </div>
+
+      ${state.walks.length > 0 ? `
+        <section class="section">
+          <h2 class="section-title">Walk History</h2>
+          <div class="session-list">
+            ${state.walks.map(w => renderWalkCard(w, true)).join("")}
+          </div>
+        </section>
+      ` : `
+        <div class="empty-state empty-state--sm">
+          <div class="empty-state__text">No walks logged yet.</div>
+        </div>
+      `}
     </div>
   `;
 }
@@ -133,7 +229,14 @@ function renderSessionCard(session) {
 // ============================================
 function renderLog() {
   const session = state.currentSession;
-  if (!session) return `<div class="view"><p>No active session.</p></div>`;
+  if (!session) return `
+    <div class="view">
+      <div class="empty-state">
+        <div class="empty-state__icon">✏️</div>
+        <div class="empty-state__text">No active session. Go to Today and tap Start.</div>
+      </div>
+    </div>
+  `;
 
   const workout = WORKOUT_DATA[session.day_type];
   const setsByExercise = groupBy(state.currentSets, "exercise_name");
@@ -148,7 +251,6 @@ function renderLog() {
         <button class="btn btn--finish" data-action="finish-session">Finish</button>
       </div>
 
-      <!-- Session meta -->
       <div class="session-meta-form card">
         <div class="form-row">
           <label class="form-label">Duration</label>
@@ -161,27 +263,15 @@ function renderLog() {
           </div>
         </div>
         <div class="form-row">
-          <label class="form-label checkbox-label">
-            <input type="checkbox" id="walked-cb" ${session.walked_today ? "checked" : ""} data-action="toggle-walked">
-            <span>Walked today</span>
-          </label>
-          ${session.walked_today ? `
-            <input type="number" class="input input--sm" id="miles-input" placeholder="Miles"
-              value="${session.miles_walked || ""}" step="0.1" min="0" data-action="update-miles">
-          ` : ""}
-        </div>
-        <div class="form-row">
           <label class="form-label">Session notes</label>
-          <textarea class="input textarea" id="session-notes" placeholder="How did it feel overall?"
+          <textarea class="input textarea" id="session-notes"
+            placeholder="How did it feel overall?"
             data-action="update-session-notes">${session.notes || ""}</textarea>
         </div>
       </div>
 
-      <!-- Exercises -->
       <section class="section">
         <h2 class="section-title">Exercises</h2>
-        
-        <!-- Add exercise -->
         <div class="add-exercise card">
           <select class="input" id="exercise-select">
             <option value="">— Pick an exercise —</option>
@@ -192,7 +282,6 @@ function renderLog() {
           <button class="btn btn--secondary" data-action="add-exercise-set">Add Set</button>
         </div>
 
-        <!-- Sets by exercise -->
         ${Object.entries(setsByExercise).map(([exName, sets]) => `
           <div class="exercise-group">
             <div class="exercise-group__header">
@@ -200,10 +289,8 @@ function renderLog() {
               <span class="exercise-group__count">${sets.length} set${sets.length !== 1 ? "s" : ""}</span>
             </div>
             ${sets.map((set, i) => renderSetRow(set, i)).join("")}
-            <button class="btn btn--ghost btn--sm add-set-btn" 
-              data-action="add-set-to-exercise" data-exercise="${exName}">
-              + Add set
-            </button>
+            <button class="btn btn--ghost btn--sm add-set-btn"
+              data-action="add-set-to-exercise" data-exercise="${exName}">+ Add set</button>
           </div>
         `).join("")}
 
@@ -240,16 +327,14 @@ function renderSetRow(set, index) {
           ${EFFORT_LEVELS.map(e => `
             <button class="effort-btn ${set.effort_level === e.value ? "effort-btn--active" : ""}"
               data-action="set-effort" data-id="${set.id}" data-effort="${e.value}"
-              title="${e.label}">
-              ${e.icon}
-            </button>
+              title="${e.label}">${e.icon}</button>
           `).join("")}
         </div>
         <input type="text" class="input input--sm input--full" placeholder="Notes (optional)"
           value="${set.notes || ""}"
           data-action="update-set" data-field="notes" data-id="${set.id}">
       </div>
-      <button class="btn-delete" data-action="delete-set" data-id="${set.id}" title="Remove set">×</button>
+      <button class="btn-delete" data-action="delete-set" data-id="${set.id}">×</button>
     </div>
   `;
 }
@@ -258,9 +343,7 @@ function renderSetRow(set, index) {
 // HISTORY VIEW
 // ============================================
 function renderHistory() {
-  if (state.historyDetail) {
-    return renderHistoryDetail(state.historyDetail);
-  }
+  if (state.historyDetail) return renderHistoryDetail(state.historyDetail);
 
   return `
     <div class="view">
@@ -273,7 +356,7 @@ function renderHistory() {
       ` : `
         <div class="session-list">
           ${state.sessions.map(s => `
-            <div class="session-card session-card--detail" 
+            <div class="session-card session-card--detail"
               data-action="view-history-detail" data-id="${s.id}"
               style="--day-color: ${(WORKOUT_DATA[s.day_type] || WORKOUT_DATA.push).color}">
               <div class="session-card__accent"></div>
@@ -284,7 +367,6 @@ function renderHistory() {
                 </div>
                 <div class="session-card__meta">
                   ${s.duration_minutes ? `<span>⏱ ${s.duration_minutes}m${s.duration_seconds ? ` ${s.duration_seconds}s` : ""}</span>` : ""}
-                  ${s.walked_today ? `<span>🚶 ${s.miles_walked || "?"} mi</span>` : ""}
                 </div>
                 ${s.notes ? `<div class="session-card__notes">${s.notes}</div>` : ""}
               </div>
@@ -307,26 +389,17 @@ function renderHistoryDetail(detail) {
         <button class="btn btn--ghost btn--sm" data-action="back-history">← Back</button>
         <button class="btn btn--danger btn--sm" data-action="delete-session" data-id="${session.id}">Delete</button>
       </div>
-
       <div class="log-header" style="--day-color: ${workout.color}">
         <div class="log-header__info">
           <div class="log-header__type">${workout.label} Day</div>
           <div class="log-header__sub">${formatDate(session.session_date)}</div>
         </div>
       </div>
-
       <div class="stats-row">
-        ${session.duration_minutes ? `
-          <div class="stat-pill">⏱ ${session.duration_minutes}m${session.duration_seconds ? ` ${session.duration_seconds}s` : ""}</div>
-        ` : ""}
-        ${session.walked_today ? `
-          <div class="stat-pill">🚶 ${session.miles_walked || "?"} mi walked</div>
-        ` : ""}
+        ${session.duration_minutes ? `<div class="stat-pill">⏱ ${session.duration_minutes}m${session.duration_seconds ? ` ${session.duration_seconds}s` : ""}</div>` : ""}
         <div class="stat-pill">💪 ${sets.length} sets total</div>
       </div>
-
       ${session.notes ? `<div class="card session-notes-display">${session.notes}</div>` : ""}
-
       ${Object.entries(setsByExercise).map(([exName, exSets]) => `
         <div class="exercise-group">
           <div class="exercise-group__header">
@@ -357,43 +430,86 @@ function renderHistoryDetail(detail) {
 // ============================================
 function renderProgress() {
   const allExercises = [
-    ...new Set([
-      ...Object.values(WORKOUT_DATA).flatMap(w => w.exercises),
-    ])
+    ...new Set(Object.values(WORKOUT_DATA).flatMap(w => w.exercises))
   ].filter(Boolean).sort();
 
   return `
     <div class="view">
       <h1 class="page-title">Progress</h1>
 
-      <div class="card">
-        <label class="form-label">Track an exercise</label>
-        <select class="input" id="progress-exercise-select" data-action="select-progress-exercise">
-          <option value="">— Choose exercise —</option>
-          ${allExercises.map(ex => `
-            <option value="${ex}" ${state.progressExercise === ex ? "selected" : ""}>${ex}</option>
-          `).join("")}
-        </select>
+      <div class="progress-tabs">
+        <button class="progress-tab ${state.progressTab === "lift" ? "progress-tab--active" : ""}"
+          data-action="progress-tab" data-tab="lift">💪 Lifting</button>
+        <button class="progress-tab ${state.progressTab === "walk" ? "progress-tab--active" : ""}"
+          data-action="progress-tab" data-tab="walk">🚶 Walking</button>
       </div>
 
-      ${state.progressExercise && state.progressData.length > 0 ? `
-        <div class="chart-container card">
-          <div class="chart-title">${state.progressExercise} — Max Weight Over Time</div>
-          ${renderChart(state.progressData)}
+      ${state.progressTab === "lift" ? `
+        <div class="card">
+          <label class="form-label">Track an exercise</label>
+          <select class="input" id="progress-exercise-select" data-action="select-progress-exercise">
+            <option value="">— Choose exercise —</option>
+            ${allExercises.map(ex => `
+              <option value="${ex}" ${state.progressExercise === ex ? "selected" : ""}>${ex}</option>
+            `).join("")}
+          </select>
         </div>
-        <div class="progress-stats">
+        ${state.progressExercise && state.progressData.length > 0 ? `
+          <div class="chart-container card">
+            <div class="chart-title">${state.progressExercise} — Max Weight Over Time</div>
+            ${renderChart(state.progressData, "lbs")}
+          </div>
           ${renderProgressStats(state.progressData)}
-        </div>
-      ` : state.progressExercise ? `
-        <div class="empty-state">
-          <div class="empty-state__text">No data logged for ${state.progressExercise} yet.</div>
-        </div>
-      ` : ""}
+        ` : state.progressExercise ? `
+          <div class="empty-state empty-state--sm">
+            <div class="empty-state__text">No data for ${state.progressExercise} yet.</div>
+          </div>
+        ` : ""}
+      ` : `
+        ${renderWalkProgress()}
+      `}
     </div>
   `;
 }
 
-function renderChart(data) {
+function renderWalkProgress() {
+  const walks = [...state.walks].sort((a, b) => a.walk_date.localeCompare(b.walk_date));
+  if (walks.length === 0) {
+    return `<div class="empty-state empty-state--sm"><div class="empty-state__text">No walks logged yet.</div></div>`;
+  }
+
+  const chartData = walks.map(w => ({ date: w.walk_date, max_weight: parseFloat(w.miles) }));
+  const totalMiles = walks.reduce((sum, w) => sum + parseFloat(w.miles || 0), 0);
+  const avgMiles = totalMiles / walks.length;
+  const maxMiles = Math.max(...walks.map(w => parseFloat(w.miles || 0)));
+
+  return `
+    <div class="chart-container card">
+      <div class="chart-title">Miles Walked Over Time</div>
+      ${renderChart(chartData, "mi")}
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-card__val">${walks.length}</div>
+        <div class="stat-card__label">Total walks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card__val">${totalMiles.toFixed(1)}</div>
+        <div class="stat-card__label">Total miles</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card__val">${avgMiles.toFixed(1)}</div>
+        <div class="stat-card__label">Avg miles</div>
+      </div>
+      <div class="stat-card stat-card--accent">
+        <div class="stat-card__val">${maxMiles.toFixed(1)}</div>
+        <div class="stat-card__label">Best walk</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderChart(data, unit = "lbs") {
   if (data.length < 2) {
     return `<div class="chart-single">Only one data point so far — keep logging!</div>`;
   }
@@ -402,38 +518,35 @@ function renderChart(data) {
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
-  const weights = data.map(d => d.max_weight);
-  const minW = Math.min(...weights) * 0.9;
-  const maxW = Math.max(...weights) * 1.05;
+  const values = data.map(d => d.max_weight);
+  const minV = Math.min(...values) * 0.9;
+  const maxV = Math.max(...values) * 1.05;
 
   const xScale = i => PAD.left + (i / (data.length - 1)) * innerW;
-  const yScale = w => PAD.top + innerH - ((w - minW) / (maxW - minW)) * innerH;
+  const yScale = v => PAD.top + innerH - ((v - minV) / (maxV - minV)) * innerH;
 
   const points = data.map((d, i) => `${xScale(i)},${yScale(d.max_weight)}`).join(" ");
   const areaPoints = `${PAD.left},${PAD.top + innerH} ${points} ${xScale(data.length - 1)},${PAD.top + innerH}`;
 
-  // Y axis labels
   const yTicks = 4;
   const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
-    const val = minW + (i / yTicks) * (maxW - minW);
+    const val = minV + (i / yTicks) * (maxV - minV);
     const y = yScale(val);
-    return `<text x="${PAD.left - 6}" y="${y + 4}" text-anchor="end" class="chart-tick">${Math.round(val)}</text>
+    return `<text x="${PAD.left - 6}" y="${y + 4}" text-anchor="end" class="chart-tick">${Math.round(val * 10) / 10}</text>
             <line x1="${PAD.left}" y1="${y}" x2="${PAD.left + innerW}" y2="${y}" class="chart-grid"/>`;
   });
 
-  // X axis labels (show up to 5)
   const step = Math.max(1, Math.floor((data.length - 1) / 4));
-  const xLabels = data.filter((_, i) => i % step === 0 || i === data.length - 1).map((d, idx) => {
-    const realIdx = data.indexOf(d);
-    const date = new Date(d.date + "T12:00:00");
-    const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return `<text x="${xScale(realIdx)}" y="${H - 8}" text-anchor="middle" class="chart-tick">${label}</text>`;
-  });
+  const xLabels = data
+    .filter((_, i) => i % step === 0 || i === data.length - 1)
+    .map(d => {
+      const realIdx = data.indexOf(d);
+      const date = new Date(d.date + "T12:00:00");
+      const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return `<text x="${xScale(realIdx)}" y="${H - 8}" text-anchor="middle" class="chart-tick">${label}</text>`;
+    });
 
-  // Data dots
-  const dots = data.map((d, i) => `
-    <circle cx="${xScale(i)}" cy="${yScale(d.max_weight)}" r="4" class="chart-dot"/>
-  `);
+  const dots = data.map((d, i) => `<circle cx="${xScale(i)}" cy="${yScale(d.max_weight)}" r="4" class="chart-dot"/>`);
 
   return `
     <svg viewBox="0 0 ${W} ${H}" class="chart-svg">
@@ -453,31 +566,18 @@ function renderChart(data) {
 }
 
 function renderProgressStats(data) {
-  if (data.length === 0) return "";
+  if (!data.length) return "";
   const first = data[0].max_weight;
   const last = data[data.length - 1].max_weight;
   const max = Math.max(...data.map(d => d.max_weight));
   const diff = last - first;
   const sign = diff >= 0 ? "+" : "";
-
   return `
     <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-card__val">${first} lbs</div>
-        <div class="stat-card__label">Starting</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card__val">${last} lbs</div>
-        <div class="stat-card__label">Current</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card__val">${max} lbs</div>
-        <div class="stat-card__label">Best</div>
-      </div>
-      <div class="stat-card stat-card--accent">
-        <div class="stat-card__val">${sign}${diff} lbs</div>
-        <div class="stat-card__label">Total gain</div>
-      </div>
+      <div class="stat-card"><div class="stat-card__val">${first} lbs</div><div class="stat-card__label">Starting</div></div>
+      <div class="stat-card"><div class="stat-card__val">${last} lbs</div><div class="stat-card__label">Current</div></div>
+      <div class="stat-card"><div class="stat-card__val">${max} lbs</div><div class="stat-card__label">Best</div></div>
+      <div class="stat-card stat-card--accent"><div class="stat-card__val">${sign}${diff} lbs</div><div class="stat-card__label">Total gain</div></div>
     </div>
   `;
 }
@@ -489,16 +589,11 @@ let debounceTimers = {};
 
 function bindEvents() {
   document.querySelectorAll("[data-action]").forEach(el => {
-    // Avoid double-binding
     if (el._bound) return;
     el._bound = true;
-
     const action = el.dataset.action;
-
-    if (action === "update-set" || action === "update-duration" || 
-        action === "update-miles" || action === "update-session-notes") {
+    if (["update-set", "update-duration", "update-session-notes", "walk-form-update"].includes(action)) {
       el.addEventListener("input", handleAction);
-      el.addEventListener("change", handleAction);
     } else if (action === "select-progress-exercise") {
       el.addEventListener("change", handleAction);
     } else {
@@ -507,14 +602,11 @@ function bindEvents() {
     }
   });
 
-  // Special: custom exercise toggle
   const exSelect = document.getElementById("exercise-select");
   if (exSelect) {
     exSelect.addEventListener("change", () => {
       const custom = document.getElementById("custom-exercise");
-      if (custom) {
-        custom.classList.toggle("hidden", exSelect.value !== "__custom");
-      }
+      if (custom) custom.classList.toggle("hidden", exSelect.value !== "__custom");
     });
   }
 }
@@ -531,7 +623,11 @@ async function handleAction(e) {
     case "finish-session":
       setState({ view: "home" });
       showToast("Workout saved!");
-      loadSessions();
+      await loadSessions();
+      break;
+
+    case "nav-walk":
+      setState({ view: "walk" });
       break;
 
     case "add-exercise-set": {
@@ -568,20 +664,6 @@ async function handleAction(e) {
       await DB.deleteSet(el.dataset.id);
       const sets = await DB.getSessionSets(state.currentSession.id);
       setState({ currentSets: sets });
-      break;
-    }
-
-    case "toggle-walked": {
-      const checked = el.checked;
-      await DB.updateSession(state.currentSession.id, { walked_today: checked, miles_walked: checked ? state.currentSession.miles_walked : null });
-      setState({ currentSession: { ...state.currentSession, walked_today: checked } });
-      break;
-    }
-
-    case "update-miles": {
-      const miles = parseFloat(el.value) || null;
-      debounce("miles", () => DB.updateSession(state.currentSession.id, { miles_walked: miles }), 800);
-      setState({ currentSession: { ...state.currentSession, miles_walked: miles } });
       break;
     }
 
@@ -625,7 +707,6 @@ async function handleAction(e) {
       const ex = el.value;
       if (!ex) { setState({ progressExercise: null, progressData: [] }); return; }
       const rawSets = await DB.getExerciseHistory(ex);
-      // Group by date, take max weight per day
       const byDate = {};
       rawSets.forEach(s => {
         const date = s.created_at?.split("T")[0];
@@ -638,6 +719,78 @@ async function handleAction(e) {
       setState({ progressExercise: ex, progressData });
       break;
     }
+
+    case "progress-tab":
+      setState({ progressTab: el.dataset.tab });
+      break;
+
+    // ── WALK FORM ──────────────────────────
+    case "walk-form-update": {
+      const field = el.dataset.field;
+      setState({ walkForm: { ...state.walkForm, [field]: el.value } });
+      break;
+    }
+
+    case "save-walk": {
+      const f = state.walkForm;
+      if (!f.miles) { showToast("Miles is required", "error"); return; }
+      const payload = {
+        walk_date: f.walk_date,
+        miles: parseFloat(f.miles),
+        duration_minutes: f.duration_minutes ? parseInt(f.duration_minutes) : null,
+        notes: f.notes || null,
+      };
+      if (state.editingWalk) {
+        await DB.updateWalk(state.editingWalk, payload);
+        showToast("Walk updated");
+      } else {
+        await DB.createWalk(payload);
+        showToast("Walk logged!");
+      }
+      await loadWalks();
+      setState({
+        editingWalk: null,
+        walkForm: {
+          walk_date: new Date().toISOString().split("T")[0],
+          miles: "", duration_minutes: "", notes: ""
+        }
+      });
+      break;
+    }
+
+    case "edit-walk": {
+      const walk = state.walks.find(w => w.id === el.dataset.id);
+      if (!walk) return;
+      setState({
+        editingWalk: walk.id,
+        walkForm: {
+          walk_date: walk.walk_date,
+          miles: walk.miles,
+          duration_minutes: walk.duration_minutes || "",
+          notes: walk.notes || ""
+        }
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      break;
+    }
+
+    case "cancel-edit-walk":
+      setState({
+        editingWalk: null,
+        walkForm: {
+          walk_date: new Date().toISOString().split("T")[0],
+          miles: "", duration_minutes: "", notes: ""
+        }
+      });
+      break;
+
+    case "delete-walk": {
+      if (!confirm("Delete this walk?")) return;
+      await DB.deleteWalk(el.dataset.id);
+      await loadWalks();
+      showToast("Walk deleted");
+      break;
+    }
   }
 }
 
@@ -648,7 +801,6 @@ async function startWorkout(dayType) {
   const session = await DB.createSession({
     day_type: dayType,
     session_date: new Date().toISOString().split("T")[0],
-    walked_today: false,
   });
   setState({ currentSession: session, currentSets: [], view: "log" });
 }
@@ -656,18 +808,14 @@ async function startWorkout(dayType) {
 async function addSet(exerciseName) {
   const existingSets = state.currentSets.filter(s => s.exercise_name === exerciseName);
   const setNumber = existingSets.length + 1;
-
-  // Suggest last weight for this exercise
   const lastSet = [...existingSets].reverse().find(s => s.weight_lbs);
   const defaultWeight = lastSet?.weight_lbs || DEFAULT_WEIGHTS[exerciseName] || null;
-
   const newSet = await DB.addSet({
     session_id: state.currentSession.id,
     exercise_name: exerciseName,
     set_number: setNumber,
     weight_lbs: defaultWeight,
   });
-
   setState({ currentSets: [...state.currentSets, newSet] });
 }
 
@@ -698,6 +846,11 @@ async function loadSessions() {
   setState({ sessions });
 }
 
+async function loadWalks() {
+  const walks = await DB.getWalks(100);
+  setState({ walks });
+}
+
 // ============================================
 // NAV
 // ============================================
@@ -713,6 +866,6 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
 // BOOT
 // ============================================
 (async () => {
-  await loadSessions();
+  await Promise.all([loadSessions(), loadWalks()]);
   render();
 })();

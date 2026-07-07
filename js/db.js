@@ -9,28 +9,24 @@ const headers = {
 };
 
 const DB = {
+  // ── SESSIONS ──────────────────────────────
   async createSession(session) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/workout_sessions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(session)
+      method: "POST", headers, body: JSON.stringify(session)
     });
     if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    return data[0];
+    return (await res.json())[0];
   },
 
   async updateSession(id, updates) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/workout_sessions?id=eq.${id}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify(updates)
+      method: "PATCH", headers, body: JSON.stringify(updates)
     });
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
   },
 
-  async getSessions(limit = 30) {
+  async getSessions(limit = 50) {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/workout_sessions?order=session_date.desc&limit=${limit}`,
       { headers }
@@ -42,29 +38,30 @@ const DB = {
   async getSessionWithSets(sessionId) {
     const [sessionRes, setsRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/workout_sessions?id=eq.${sessionId}`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/exercise_sets?session_id=eq.${sessionId}&order=set_number.asc`, { headers })
+      fetch(`${SUPABASE_URL}/rest/v1/exercise_sets?session_id=eq.${sessionId}&order=created_at.asc`, { headers })
     ]);
-    const sessions = await sessionRes.json();
-    const sets = await setsRes.json();
-    return { session: sessions[0], sets };
+    return { session: (await sessionRes.json())[0], sets: await setsRes.json() };
   },
 
-  async addSet(setData) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/exercise_sets`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(setData)
+  async deleteSession(id) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/workout_sessions?id=eq.${id}`, {
+      method: "DELETE", headers
     });
     if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    return data[0];
+  },
+
+  // ── SETS ──────────────────────────────────
+  async addSet(setData) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/exercise_sets`, {
+      method: "POST", headers, body: JSON.stringify(setData)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json())[0];
   },
 
   async updateSet(id, updates) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/exercise_sets?id=eq.${id}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify(updates)
+      method: "PATCH", headers, body: JSON.stringify(updates)
     });
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
@@ -72,29 +69,9 @@ const DB = {
 
   async deleteSet(id) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/exercise_sets?id=eq.${id}`, {
-      method: "DELETE",
-      headers
+      method: "DELETE", headers
     });
     if (!res.ok) throw new Error(await res.text());
-  },
-
-  async getExerciseHistory(exerciseName, limit = 60) {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/exercise_sets?exercise_name=eq.${encodeURIComponent(exerciseName)}&order=created_at.asc&limit=${limit}`,
-      { headers }
-    );
-    if (!res.ok) throw new Error(await res.text());
-    return await res.json();
-  },
-
-  async getAllExerciseNames() {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/exercise_sets?select=exercise_name`,
-      { headers }
-    );
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    return [...new Set(data.map(d => d.exercise_name))].sort();
   },
 
   async getSessionSets(sessionId) {
@@ -106,11 +83,54 @@ const DB = {
     return await res.json();
   },
 
-  async deleteSession(id) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/workout_sessions?id=eq.${id}`, {
-      method: "DELETE",
-      headers
+  async getExerciseHistory(exerciseName, limit = 120) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/exercise_sets?exercise_name=eq.${encodeURIComponent(exerciseName)}&order=created_at.asc&limit=${limit}`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  },
+
+  // ── WALKS ─────────────────────────────────
+  async createWalk(walk) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/walks`, {
+      method: "POST", headers, body: JSON.stringify(walk)
     });
     if (!res.ok) throw new Error(await res.text());
+    return (await res.json())[0];
+  },
+
+  async getWalks(limit = 100) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/walks?order=walk_date.desc&limit=${limit}`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  },
+
+  async updateWalk(id, updates) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/walks?id=eq.${id}`, {
+      method: "PATCH", headers, body: JSON.stringify(updates)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  },
+
+  async deleteWalk(id) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/walks?id=eq.${id}`, {
+      method: "DELETE", headers
+    });
+    if (!res.ok) throw new Error(await res.text());
+  },
+
+  async getWalkHistory(limit = 120) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/walks?order=walk_date.asc&limit=${limit}`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
   }
 };
