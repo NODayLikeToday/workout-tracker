@@ -286,7 +286,10 @@ function renderLog() {
           <div class="exercise-group">
             <div class="exercise-group__header">
               <span class="exercise-group__name">${exName}</span>
-              <span class="exercise-group__count">${sets.length} set${sets.length !== 1 ? "s" : ""}</span>
+              <div class="exercise-group__header-right">
+                <span class="exercise-group__count">${sets.length} set${sets.length !== 1 ? "s" : ""}</span>
+                <button class="btn-delete" data-action="delete-exercise" data-exercise="${exName}" title="Delete exercise">×</button>
+              </div>
             </div>
             ${sets.map((set, i) => renderSetRow(set, i)).join("")}
             <button class="btn btn--ghost btn--sm add-set-btn"
@@ -648,6 +651,10 @@ async function handleAction(e) {
       const { id, field } = el.dataset;
       let val = el.value;
       if (field === "reps" || field === "weight_lbs") val = val ? parseFloat(val) : null;
+      // Keep the in-memory set in sync immediately (no render) so a later
+      // render (e.g. adding another set) doesn't clobber what was just typed.
+      const set = state.currentSets.find(s => s.id === id);
+      if (set) set[field] = val;
       debounce(`set-${id}-${field}`, () => DB.updateSet(id, { [field]: val }), 800);
       break;
     }
@@ -667,15 +674,31 @@ async function handleAction(e) {
       break;
     }
 
+    case "delete-exercise": {
+      const exName = el.dataset.exercise;
+      if (!confirm(`Delete "${exName}" and all its sets?`)) return;
+      const toDelete = state.currentSets.filter(s => s.exercise_name === exName);
+      await Promise.all(toDelete.map(s => DB.deleteSet(s.id)));
+      const sets = await DB.getSessionSets(state.currentSession.id);
+      setState({ currentSets: sets });
+      showToast("Exercise removed");
+      break;
+    }
+
     case "update-duration": {
       const mins = parseInt(document.getElementById("dur-min")?.value) || 0;
       const secs = parseInt(document.getElementById("dur-sec")?.value) || 0;
+      if (state.currentSession) {
+        state.currentSession.duration_minutes = mins;
+        state.currentSession.duration_seconds = secs;
+      }
       debounce("duration", () => DB.updateSession(state.currentSession.id, { duration_minutes: mins, duration_seconds: secs }), 800);
       break;
     }
 
     case "update-session-notes": {
       const notes = el.value;
+      if (state.currentSession) state.currentSession.notes = notes;
       debounce("session-notes", () => DB.updateSession(state.currentSession.id, { notes }), 1000);
       break;
     }
@@ -726,8 +749,12 @@ async function handleAction(e) {
 
     // ── WALK FORM ──────────────────────────
     case "walk-form-update": {
+      // Mutate directly instead of calling setState()/render() on every
+      // keystroke — re-rendering the form recreated the <input> element
+      // each time, which dropped focus/closed the keyboard after one
+      // character (especially noticeable typing a decimal in "Miles").
       const field = el.dataset.field;
-      setState({ walkForm: { ...state.walkForm, [field]: el.value } });
+      state.walkForm[field] = el.value;
       break;
     }
 
