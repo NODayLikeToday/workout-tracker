@@ -1,0 +1,14 @@
+name: Supabase heartbeat
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # daily at 8am UTC
+  workflow_dispatch: {}    # lets you trigger it manually from the Actions tab too
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call heartbeat function
+        run: |
+          curl -sf -X POST "https://xfbzyxcyzqtrqphqtwgy.supabase.co/functions/v1/heartbeat"
